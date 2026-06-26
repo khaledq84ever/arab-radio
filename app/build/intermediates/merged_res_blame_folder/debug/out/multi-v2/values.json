@@ -1,0 +1,38 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.khaled.kuwaitradio.app-mergeDebugResources-2:/values/values.xml",
+            "map": [
+                {
+                    "source": "/home/khaled/myapp/app/src/main/res/values/strings.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endColumns": "52",
+                        "endOffsets": "103"
+                    }
+                },
+                {
+                    "source": "/home/khaled/myapp/app/src/main/res/values/styles.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "3",
+                        "endColumns": "12",
+                        "endOffsets": "129"
+                    },
+                    "to": {
+                        "startLines": "3",
+                        "startColumns": "4",
+                        "startOffsets": "108",
+                        "endLines": "4",
+                        "endColumns": "12",
+                        "endOffsets": "182"
+                    }
+                }
+            ]
+        }
+    ]
+}
