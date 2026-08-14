@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Most stream hosts are HTTPS; a handful of stations only serve HTTP.
+     Scope cleartext to just those hosts instead of the whole app. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">stream.radiojar.com</domain>
+        <domain includeSubdomains="false">n12.radiojar.com</domain>
+        <domain includeSubdomains="false">byblosnights.com</domain>
+        <domain includeSubdomains="false">stream.skynewsarabia.com</domain>
+        <domain includeSubdomains="false">static.france24.com</domain>
+        <domain includeSubdomains="false">radio.mosaiquefm.net</domain>
+        <domain includeSubdomains="false">streaming2.toutech.net</domain>
+        <domain includeSubdomains="false">broadcast.ice.infomaniak.ch</domain>
+    </domain-config>
+</network-security-config>

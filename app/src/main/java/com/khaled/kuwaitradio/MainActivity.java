@@ -66,6 +66,12 @@ public class MainActivity extends Activity {
     int activeTab = 0;
     String searchQ = "";
 
+    AudioManager audioManager;
+    AudioFocusRequest focusRequest;
+    boolean hasFocus = false;
+    boolean resumeOnFocusGain = false;
+    AudioManager.OnAudioFocusChangeListener focusListener;
+
     ValueAnimator[] waveAnims = new ValueAnimator[5];
     View[] waveBars = new View[5];
     TextView nowName, nowAr, nowFlag, nowInfo, statusTv, playIc;
@@ -78,6 +84,32 @@ public class MainActivity extends Activity {
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
         prefs = getSharedPreferences("radio", MODE_PRIVATE);
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        focusListener = change -> {
+            switch (change) {
+                case AudioManager.AUDIOFOCUS_LOSS:
+                    resumeOnFocusGain = false;
+                    pausePlayback();
+                    break;
+                case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                    resumeOnFocusGain = playing;
+                    pausePlayback();
+                    break;
+                case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK:
+                    if (player != null) player.setVolume(0.2f, 0.2f);
+                    break;
+                case AudioManager.AUDIOFOCUS_GAIN:
+                    if (player != null) player.setVolume(1f, 1f);
+                    if (resumeOnFocusGain && player != null && !playing) {
+                        try { player.start(); playing = true;
+                            playIc.setText("⏸"); if (miniPl != null) miniPl.setText("⏸");
+                            setStatus("🔴 LIVE", LIVE); startWave();
+                        } catch (Exception ignored) {}
+                    }
+                    resumeOnFocusGain = false;
+                    break;
+            }
+        };
         initStations();
         setContentView(buildRoot());
         filter();
@@ -488,20 +520,24 @@ public class MainActivity extends Activity {
 
     void playStation(String url) {
         stopPlayer();
-        player = new MediaPlayer();
-        player.setAudioAttributes(new AudioAttributes.Builder()
+        MediaPlayer mp0 = new MediaPlayer();
+        player = mp0;
+        mp0.setAudioAttributes(new AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
             .setUsage(AudioAttributes.USAGE_MEDIA).build());
+        mp0.setWakeMode(getApplicationContext(), android.os.PowerManager.PARTIAL_WAKE_LOCK);
         try {
-            player.setDataSource(this, Uri.parse(url));
-            player.prepareAsync();
-            player.setOnPreparedListener(mp -> {
+            mp0.setDataSource(this, Uri.parse(url));
+            mp0.setOnPreparedListener(mp -> {
+                if (mp != player) { mp.release(); return; } // stale callback from a station we already switched away from
+                if (!requestFocus()) { setStatus("❌", RED); return; }
                 mp.start(); playing=true; retries=0;
                 playIc.post(()->{ playIc.setText("⏸"); if(miniPl!=null)miniPl.setText("⏸"); });
                 setStatus("🔴 LIVE", LIVE);
                 startWave(); rebuildList();
             });
-            player.setOnErrorListener((mp,w,e)->{
+            mp0.setOnErrorListener((mp,w,e)->{
+                if (mp != player) return true; // stale callback, already replaced
                 playing=false; stopWave();
                 if(retries<3){ retries++;
                     setStatus("🔄 "+retries+"/3",AMBER);
@@ -510,22 +546,61 @@ public class MainActivity extends Activity {
                 } else setStatus("❌",RED);
                 return true;
             });
+            mp0.prepareAsync();
         } catch(Exception e){ setStatus("❌",RED); }
     }
 
     void togglePlay() {
         if(player==null){if(cur>=0)selectStation(cur);return;}
-        if(playing){player.pause();playing=false;playIc.setText("▶");if(miniPl!=null)miniPl.setText("▶");setStatus("⏸",SUB);stopWave();}
-        else{player.start();playing=true;playIc.setText("⏸");if(miniPl!=null)miniPl.setText("⏸");setStatus("🔴 LIVE",LIVE);startWave();}
+        if(playing){
+            pausePlayback();
+        } else {
+            if (!requestFocus()) return;
+            player.start();playing=true;playIc.setText("⏸");if(miniPl!=null)miniPl.setText("⏸");setStatus("🔴 LIVE",LIVE);startWave();
+        }
+    }
+
+    void pausePlayback(){
+        if (player == null || !playing) return;
+        try { player.pause(); } catch (Exception ignored) {}
+        playing=false;
+        playIc.setText("▶"); if(miniPl!=null) miniPl.setText("▶");
+        setStatus("⏸",SUB); stopWave();
     }
 
     void move(int d){if(all.isEmpty())return;selectStation(cur<0?0:(cur+d+all.size())%all.size());}
 
     void stopPlayer(){
         stopWave();
+        abandonFocus();
         if(retryRun!=null){handler.removeCallbacks(retryRun);retryRun=null;}
-        if(player!=null){try{player.stop();}catch(Exception x){}player.release();player=null;}
+        if(player!=null){try{player.stop();}catch(Exception x){}try{player.release();}catch(Exception x){}player=null;}
         playing=false;
+    }
+
+    boolean requestFocus(){
+        if (hasFocus) return true;
+        int result;
+        if (Build.VERSION.SDK_INT >= 26) {
+            focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(new AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .setUsage(AudioAttributes.USAGE_MEDIA).build())
+                .setOnAudioFocusChangeListener(focusListener)
+                .build();
+            result = audioManager.requestAudioFocus(focusRequest);
+        } else {
+            result = audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN);
+        }
+        hasFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+        return hasFocus;
+    }
+
+    void abandonFocus(){
+        if (!hasFocus) return;
+        if (Build.VERSION.SDK_INT >= 26 && focusRequest != null) audioManager.abandonAudioFocusRequest(focusRequest);
+        else audioManager.abandonAudioFocus(focusListener);
+        hasFocus = false;
     }
 
     void setStatus(String t,int c){statusTv.post(()->{statusTv.setText(" "+t+" ");statusTv.setTextColor(c);});}
